@@ -17,33 +17,10 @@ public class MyClient {
 			in = new BufferedReader(new InputStreamReader(s.getInputStream()));
 			dout = new DataOutputStream(s.getOutputStream());
 
-			String str = "";
-
 			Handshake();
-			
-			int jobNum = 0;
-			while(!str.equals("NONE")){
-				dout.write(("REDY\n").getBytes());
-				str = (String) in.readLine();
-				System.out.println("message= " + str);
-				
-				if(servers == null)
-					GetServerData();
 
-				String[] jobData = str.split(" ");
-				
-				//If it's a job submission, schedule it to the largest server
-				if(jobData[0].equals("JOBN")){
-					String sch = "SCHD " + jobData[2] + " " + servers[largestServerIdx].sType +
-						" " + jobNum % largestServerLimit + "\n";
-					dout.write((sch).getBytes());
-
-					str = (String) in.readLine();
-					System.out.println("message= " + str);
-					
-					jobNum++;
-				}
-			}
+			// ScheduleLRR();
+			ScheduleFC();
 
 			dout.write(("QUIT\n").getBytes());
 
@@ -108,6 +85,92 @@ public class MyClient {
 		}catch(Exception e){
 			System.out.println(e);
 		}
+	}
+
+	//Largest Round Robin
+	//Schedules all jobs to the largest (most cores) server in a round robin fashion.
+	private static void ScheduleLRR(){
+		try{
+			String str = "";
+			int jobNum = 0;
+				while(!str.equals("NONE")){
+					dout.write(("REDY\n").getBytes());
+					str = (String) in.readLine();
+					System.out.println("message= " + str);
+					
+					if(servers == null)
+						GetServerData();
+	
+					String[] jobData = str.split(" ");
+					
+					//If it's a job submission, schedule it to the largest server
+					if(jobData[0].equals("JOBN")){
+						String sch = "SCHD " + jobData[2] + " " + servers[largestServerIdx].sType +
+							" " + jobNum % largestServerLimit + "\n";
+						dout.write((sch).getBytes());
+	
+						str = (String) in.readLine();
+						System.out.println("message= " + str);
+						
+						jobNum++;
+					}
+				}
+		}catch(Exception e){
+			System.out.println(e);
+		}
+		
+	}
+
+	//First Capable.
+	//Schedules a job to the first server in the response to GETS Capable regardless of how many running and waiting jobs there are.
+	private static void ScheduleFC(){
+		try{
+			String str = "";
+				while(!str.equals("NONE")){
+					dout.write(("REDY\n").getBytes());
+					str = (String) in.readLine();
+					System.out.println("message= " + str);
+					
+					String[] jobData = str.split(" ");
+					
+					
+					//If it's a job submission, schedule it to the largest server
+					if(jobData[0].equals("JOBN")){
+						String jobStr = jobData[4] + " " + jobData[5] + " " + jobData[6];
+						dout.write(("GETS Capable " + jobStr + "\n").getBytes());
+						str = (String) in.readLine();
+						System.out.println("Gets Response= " + str);
+
+						String[] getsData = str.split(" ");
+						int numServers = 0;
+						if(getsData[1]!=".")
+							numServers = Integer.parseInt(getsData[1]);
+
+						dout.write(("OK\n").getBytes());
+
+						str = (String) in.readLine();
+						System.out.println("FirstServer= " + str);
+						String[] serverData = str.split(" ");
+
+						for(int i = 1; i < numServers; i++){
+							str = (String) in.readLine();
+						}
+						dout.write(("OK\n").getBytes());
+						str = (String) in.readLine();
+						System.out.println("message= " + str);
+						
+						String sch = "SCHD " + jobData[2] + " " + serverData[0] +
+							" " + serverData[1] + "\n";
+						dout.write((sch).getBytes());
+	
+						str = (String) in.readLine();
+						System.out.println("message= " + str);
+					}
+				}
+		}catch(Exception e){
+			System.out.println(e);
+		}
+		
 	}
 }
 
