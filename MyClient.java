@@ -1,7 +1,12 @@
 import java.io.*;
 import java.net.*;
-
-import javax.lang.model.util.ElementScanner6;
+import java.util.ArrayList;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.DocumentBuilder;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.Node;
+import org.w3c.dom.Element;
 
 public class MyClient {
 
@@ -9,9 +14,8 @@ public class MyClient {
 	static BufferedReader in;
 	static DataOutputStream dout;
 
-	static Server[] servers;
-	static int largestServerIdx;
-	static int largestServerLimit = 0;
+	static ArrayList<Job> jobs;
+	static ArrayList<Server> servers;
 
 	public static void main(String[] args) {
 		try {
@@ -21,260 +25,330 @@ public class MyClient {
 
 			Handshake();
 
+			GetJobData();
+			GetSystemData();
+
 			Boolean useDefaultAlgorithm = true;
-			for(int i = 0; i < args.length; i++){
-				if(args[i].equals("fc")){
+			for (int i = 0; i < args.length; i++) {
+				if (args[i].toLowerCase().equals("fc")) {
 					useDefaultAlgorithm = false;
 					ScheduleFC();
 					break;
-				}else if(args[i].equals("lrr")){
+				} else if (args[i].toLowerCase().equals("lrr")) {
 					useDefaultAlgorithm = false;
 					ScheduleLRR();
 					break;
-				}else if(args[i].equals("spd")){
+				} else if (args[i].toLowerCase().equals("fa")) {
 					useDefaultAlgorithm = false;
-					ScheduleSPD();
+					ScheduleFA();
 					break;
 				}
 			}
-			if(useDefaultAlgorithm)
-				ScheduleLRR();
+			if (useDefaultAlgorithm)
+				ScheduleFA();
 
 			dout.write(("QUIT\n").getBytes());
 
 			dout.flush();
 			dout.close();
 			s.close();
-		}catch(Exception e){
+		} catch (Exception e) {
 			System.out.println(e);
 		}
 	}
 
-	private static void Handshake(){
-		try{
+	private static void Handshake() {
+		try {
 			dout.write(("HELO\n").getBytes());
 			String str = (String) in.readLine();
 			System.out.println("message= " + str);
-	
+
 			dout.write(("AUTH jacob\n").getBytes());
 			str = (String) in.readLine();
 			System.out.println("message= " + str);
 
-		}catch(Exception e){
+		} catch (Exception e) {
 			System.out.println(e);
 		}
 	}
 
-	private static void GetServerData(){
-		try{
-			dout.write(("GETS All\n").getBytes());
-			String str = (String) in.readLine();
-			System.out.println("message= " + str);
-			String[] getsData = str.split(" ");
-			int numServers = 0;
-			if(getsData[1]!=".")
-				numServers = Integer.parseInt(getsData[1]);
-
-			servers = new Server[numServers];
-			dout.write(("OK\n").getBytes());
-
-			largestServerIdx = 0;
-
-			for(int i = 0; i < numServers; i++){
-				str = (String) in.readLine();
-				System.out.println("message= " + str);
-				String[] serverData = str.split(" ");
-
-				//Add this server to the array
-				servers[i] = new Server(serverData[0], Integer.parseInt(serverData[1]), Integer.parseInt(serverData[4]));
-				
-				//If this server has the most cores, save it as the largest server
-				if(servers[i].sCores > servers[largestServerIdx].sCores){
-					largestServerIdx = i;
-					largestServerLimit = 1;
-				}else if(servers[i].sType.equals(servers[largestServerIdx].sType)){
-					largestServerLimit++;
+	// Reads the ds-jobs.xml file and stores all the jobs in an ArrayList
+	private static void GetJobData() {
+		try {
+			jobs = new ArrayList<Job>();
+			File file = new File(System.getProperty("user.dir") + "/ds-jobs.xml");
+			// an instance of factory that gives a document builder
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			// an instance of builder to parse the specified xml file
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			Document doc = db.parse(file);
+			doc.getDocumentElement().normalize();
+			NodeList nodeList = doc.getElementsByTagName("job");
+			// nodeList is not iterable, so we are using for loop
+			for (int itr = 0; itr < nodeList.getLength(); itr++) {
+				Node node = nodeList.item(itr);
+				if (node.getNodeType() == Node.ELEMENT_NODE) {
+					Element eElement = (Element) node;
+					Job job = new Job(eElement.getAttribute("id"), eElement.getAttribute("type"),
+							eElement.getAttribute("submitTime"), eElement.getAttribute("estRunTime"),
+							eElement.getAttribute("cores"), eElement.getAttribute("memory"),
+							eElement.getAttribute("disk"));
+					jobs.add(job);
 				}
 			}
-
-			dout.write(("OK\n").getBytes());
-			str = (String) in.readLine();
-			System.out.println("message= " + str);
-		}catch(Exception e){
-			System.out.println(e);
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
-	//Speedy
-	//Schedules all jobs to the largest (most cores) server in a round robin fashion.
-	private static void ScheduleSPD(){
-		try{
+	// Reads the ds-system.xml file and stores all the servers in an ArrayList
+	private static void GetSystemData() {
+		try {
+			servers = new ArrayList<Server>();
+			File file = new File(System.getProperty("user.dir") + "/ds-system.xml");
+			// an instance of factory that gives a document builder
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			// an instance of builder to parse the specified xml file
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			Document doc = db.parse(file);
+			doc.getDocumentElement().normalize();
+			NodeList nodeList = doc.getElementsByTagName("server");
+			// nodeList is not iterable, so we are using for loop
+			for (int itr = 0; itr < nodeList.getLength(); itr++) {
+				Node node = nodeList.item(itr);
+				if (node.getNodeType() == Node.ELEMENT_NODE) {
+					Element eElement = (Element) node;
+					Server server = new Server(eElement.getAttribute("type"), eElement.getAttribute("limit"),
+							eElement.getAttribute("bootupTime"), eElement.getAttribute("hourlyRate"),
+							eElement.getAttribute("cores"), eElement.getAttribute("memory"),
+							eElement.getAttribute("disk"));
+					servers.add(server);
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	// Largest Round Robin
+	// Schedules all jobs to the largest (most cores) server in a round robin
+	// fashion.
+	private static void ScheduleLRR() {
+		try {
+			Server largest = null;
+			for (int i = 0; i < servers.size(); i++) {
+				Server s = servers.get(i);
+				if (largest == null || largest.cores < s.cores)
+					largest = s;
+			}
 			String str = "";
 			int jobNum = 0;
-				while(!str.equals("NONE")){
-					dout.write(("REDY\n").getBytes());
+			while (!str.equals("NONE")) {
+				dout.write(("REDY\n").getBytes());
+				str = (String) in.readLine();
+				System.out.println("message= " + str);
+
+				String[] jobData = str.split(" ");
+
+				// If it's a job submission, schedule it to the largest server
+				if (jobData[0].equals("JOBN")) {
+					String sch = "SCHD " + jobData[2] + " " + largest.type +
+							" " + jobNum % largest.limit + "\n";
+					dout.write((sch).getBytes());
+
 					str = (String) in.readLine();
 					System.out.println("message= " + str);
-					
-					if(servers == null)
-						GetServerData();
-	
-					String[] jobData = str.split(" ");
-					
-					//If it's a job submission, schedule it to the largest server
-					if(jobData[0].equals("JOBN") || jobData[0].equals("JOBP")){
 
-						//check if all the largest ones are inUse. If they are 
-						String idealServer = null;
-						int idealCores = 0;
-						for(int i = 0; i < servers.length; i++){
-							Server server = servers[i];
-							if(server.sCores > Integer.parseInt(jobData[4]) && !server.inUse){
-								if(server.sCores > idealCores){
-									idealServer = server.sName();
-									idealCores = server.sCores;
-								}
-							}
-						}
-
-						if(idealServer == null){
-							idealServer = servers[largestServerIdx].sType + " " + jobNum % largestServerLimit;
-							jobNum++;
-						}
-							
-						String sch = "SCHD " + jobData[2] + " " + idealServer + "\n";
-						dout.write((sch).getBytes());
-
-						int idx = getServerIdx(idealServer);
-						servers[idx].inUse = true;
-	
-						str = (String) in.readLine();
-						System.out.println("message= " + str);
-						
-						
-					}else if(jobData[0].equals("JCPL")){
-						int idx = getServerIdx(jobData[3] + " " + jobData[4]);
-						servers[idx].inUse = false;
-					}
+					jobNum++;
 				}
-		}catch(Exception e){
+			}
+		} catch (Exception e) {
 			System.out.println(e);
 		}
-		
+
 	}
 
-	//Largest Round Robin
-	//Schedules all jobs to the largest (most cores) server in a round robin fashion.
-	private static void ScheduleLRR(){
-		try{
+	// First Capable.
+	// Schedules a job to the first server in the response to GETS Capable
+	// regardless of how many running and waiting jobs there are.
+	private static void ScheduleFC() {
+		try {
 			String str = "";
-			int jobNum = 0;
-				while(!str.equals("NONE")){
-					dout.write(("REDY\n").getBytes());
+			while (!str.equals("NONE")) {
+				dout.write(("REDY\n").getBytes());
+				str = (String) in.readLine();
+				System.out.println("message= " + str);
+
+				String[] jobData = str.split(" ");
+
+				// If it's a job submission, schedule it to the largest server
+				if (jobData[0].equals("JOBN")) {
+					String jobStr = jobData[4] + " " + jobData[5] + " " + jobData[6];
+					dout.write(("GETS Capable " + jobStr + "\n").getBytes());
+					str = (String) in.readLine();
+					System.out.println("Gets Response= " + str);
+
+					String[] getsData = str.split(" ");
+					int numServers = 0;
+					if (getsData[1] != ".")
+						numServers = Integer.parseInt(getsData[1]);
+
+					dout.write(("OK\n").getBytes());
+
+					str = (String) in.readLine();
+					System.out.println("FirstServer= " + str);
+					String[] serverData = str.split(" ");
+
+					for (int i = 1; i < numServers; i++) {
+						str = (String) in.readLine();
+					}
+					dout.write(("OK\n").getBytes());
 					str = (String) in.readLine();
 					System.out.println("message= " + str);
-					
-					if(servers == null)
-						GetServerData();
-	
-					String[] jobData = str.split(" ");
-					
-					//If it's a job submission, schedule it to the largest server
-					if(jobData[0].equals("JOBN")){
-						String sch = "SCHD " + jobData[2] + " " + servers[largestServerIdx].sType +
-							" " + jobNum % largestServerLimit + "\n";
-						dout.write((sch).getBytes());
-	
-						str = (String) in.readLine();
-						System.out.println("message= " + str);
-						
-						jobNum++;
-					}
+
+					String sch = "SCHD " + jobData[2] + " " + serverData[0] +
+							" " + serverData[1] + "\n";
+					dout.write((sch).getBytes());
+
+					str = (String) in.readLine();
+					System.out.println("message= " + str);
 				}
-		}catch(Exception e){
+			}
+		} catch (Exception e) {
 			System.out.println(e);
 		}
-		
+
 	}
 
-	//First Capable.
-	//Schedules a job to the first server in the response to GETS Capable regardless of how many running and waiting jobs there are.
-	private static void ScheduleFC(){
-		try{
+	// First Available.
+	// Schedules a job to the first available server. If there aren't
+	// any available servers, it schedules to the first capable server
+	private static void ScheduleFA() {
+		try {
 			String str = "";
-				while(!str.equals("NONE")){
-					dout.write(("REDY\n").getBytes());
+			while (!str.equals("NONE")) {
+				dout.write(("REDY\n").getBytes());
+				str = (String) in.readLine();
+				System.out.println("message= " + str);
+
+				String[] jobData = str.split(" ");
+
+				// It's a job submission. Schedule it to the first available server
+				if (jobData[0].equals("JOBN")) {
+					String jobStr = jobData[4] + " " + jobData[5] + " " + jobData[6];
+					dout.write(("GETS Avail " + jobStr + "\n").getBytes());
 					str = (String) in.readLine();
-					System.out.println("message= " + str);
-					
-					String[] jobData = str.split(" ");
-					
-					
-					//If it's a job submission, schedule it to the largest server
-					if(jobData[0].equals("JOBN")){
-						String jobStr = jobData[4] + " " + jobData[5] + " " + jobData[6];
+
+					String[] getsData = str.split(" ");
+					int numServers = 0;
+					if (getsData[1] != ".")
+						numServers = Integer.parseInt(getsData[1]);
+
+					dout.write(("OK\n").getBytes());
+					str = (String) in.readLine();
+
+					String[] serverData;
+
+					if (numServers == 0) { //No availabile servers
+						System.out.println("No available servers. Finding the first capable server.");
 						dout.write(("GETS Capable " + jobStr + "\n").getBytes());
 						str = (String) in.readLine();
-						System.out.println("Gets Response= " + str);
-
-						String[] getsData = str.split(" ");
-						int numServers = 0;
-						if(getsData[1]!=".")
+						getsData = str.split(" ");
+						if (getsData[1] != ".")
 							numServers = Integer.parseInt(getsData[1]);
 
 						dout.write(("OK\n").getBytes());
-
 						str = (String) in.readLine();
-						System.out.println("FirstServer= " + str);
-						String[] serverData = str.split(" ");
-
-						for(int i = 1; i < numServers; i++){
-							str = (String) in.readLine();
-						}
-						dout.write(("OK\n").getBytes());
-						str = (String) in.readLine();
-						System.out.println("message= " + str);
-						
-						String sch = "SCHD " + jobData[2] + " " + serverData[0] +
-							" " + serverData[1] + "\n";
-						dout.write((sch).getBytes());
-	
-						str = (String) in.readLine();
-						System.out.println("message= " + str);
 					}
+
+					System.out.println("message= " + str);
+					serverData = str.split(" ");
+
+					for (int i = 1; i < numServers; i++) {
+						str = (String) in.readLine();
+					}
+					dout.write(("OK\n").getBytes());
+					str = (String) in.readLine();
+					System.out.println("message= " + str);
+
+					String sch = "SCHD " + jobData[2] + " " + serverData[0] +
+							" " + serverData[1] + "\n";
+					dout.write((sch).getBytes());
+
+					str = (String) in.readLine();
+					System.out.println("message= " + str);
 				}
-		}catch(Exception e){
+			}
+		} catch (Exception e) {
 			System.out.println(e);
 		}
-		
-	}
 
-	private static int getServerIdx(String name){
-		if(servers == null)
-			return -1;
-
-		for(int i = 0; i < servers.length; i++){
-			if(servers[i].sName().equals(name))
-			return i;
-		}
-		return -1;
 	}
 }
 
-class Server{
-	String sType;
-	int sId;
-	int sCores;
-	Boolean inUse;
+class Server {
+	String type;
+	int limit;
+	int bootupTime;
+	String hourlyRate;
+	int cores;
+	int memory;
+	int disk;
 
-	public Server(String type, int id, int cores){
-		sType = type;
-		sId = id;
-		sCores = cores;
-		inUse = false;
+	int[] availableTime;
+
+	public Server(String type, String limit, String bootupTime, String hourlyRate, String cores, String memory,
+			String disk) {
+		this.type = type;
+		this.limit = Integer.parseInt(limit);
+		this.bootupTime = Integer.parseInt(bootupTime);
+		this.hourlyRate = hourlyRate;
+		this.cores = Integer.parseInt(cores);
+		this.memory = Integer.parseInt(memory);
+		this.disk = Integer.parseInt(disk);
+
+		availableTime = new int[this.limit];
+		for (int i = 0; i < this.limit; i++) {
+			availableTime[i] = this.bootupTime;
+		}
 	}
 
-	public String sName(){
-		return sType + " " + sId;
+	public Boolean equals(String serverType) {
+		return serverType.equals(type);
+	}
+
+	public void scheduleJob(int idx, Job job) {
+		int avail = Math.max(job.submitTime, availableTime[idx]);
+
+		availableTime[idx] = avail + job.estRunTime;
+	}
+
+	public int soonestAvailable() {
+		int idx = 0;
+		for (int i = 0; i < limit; i++) {
+			if (availableTime[i] < availableTime[idx])
+				idx = i;
+		}
+		return idx;
+	}
+}
+
+class Job {
+	int id;
+	String type;
+	int submitTime;
+	int estRunTime;
+	int cores;
+	int memory;
+	int disk;
+
+	public Job(String id, String type, String submitTime, String estRunTime, String cores, String memory, String disk) {
+		this.id = Integer.parseInt(id);
+		this.type = type;
+		this.submitTime = Integer.parseInt(submitTime);
+		this.estRunTime = Integer.parseInt(estRunTime);
+		this.cores = Integer.parseInt(cores);
+		this.memory = Integer.parseInt(memory);
+		this.disk = Integer.parseInt(disk);
 	}
 }
